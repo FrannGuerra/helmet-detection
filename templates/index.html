@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detección de Cascos (Imágenes)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+
+    <div class="container mx-auto p-4 max-w-6xl">
+        <header class="mb-8 text-center border-b border-gray-700 pb-4">
+            <h1 class="text-3xl font-bold text-blue-400">
+                <i class="fa-solid fa-camera"></i> Sistema de Detección de Cascos
+            </h1>
+        </header>
+
+        <!-- SECCIÓN 1: CARGA DE MODELO -->
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-yellow-400">1. Configuración del Modelo</h2>
+            <div class="flex items-center gap-4">
+                <!-- AGREGADO: cursor-pointer al input -->
+                <input type="file" id="modelInput" accept=".pt" class="cursor-pointer block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer">
+                <!-- AGREGADO: cursor-pointer al botón -->
+                <button onclick="uploadModel()" class="cursor-pointer bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-6 rounded transition">
+                    Cargar Modelo (.pt)
+                </button>
+            </div>
+            <p id="modelStatus" class="mt-2 text-sm text-gray-500 italic">Esperando modelo...</p>
+        </div>
+
+        <!-- SECCIÓN 2: PROCESAMIENTO -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- COLUMNA IZQUIERDA: INPUT Y PREVIEW PRINCIPAL -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-green-400">2. Subir Imagen</h2>
+                    
+                    <!-- AGREGADO: cursor-pointer a toda la zona de drop -->
+                    <div class="cursor-pointer border-2 border-dashed border-gray-600 rounded-lg p-8 text-center hover:border-blue-500 transition" id="dropZone" onclick="document.getElementById('mediaInput').click()">
+                        <!-- Solo acepta imágenes -->
+                        <input type="file" id="mediaInput" accept="image/*" class="hidden" onchange="previewMedia()">
+                        <label for="mediaInput" class="cursor-pointer flex flex-col items-center pointer-events-none">
+                            <i class="fa-solid fa-image text-4xl text-gray-500 mb-2"></i>
+                            <span class="text-gray-300">Click para subir una foto</span>
+                        </label>
+                    </div>
+
+                    <!-- AGREGADO: cursor-pointer al botón -->
+                    <button onclick="processMedia()" id="processBtn" class="cursor-pointer w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition hidden">
+                        <i class="fa-solid fa-bolt"></i> Analizar Imagen
+                    </button>
+                    
+                    <div id="loader" class="hidden mt-4 text-center">
+                        <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-white mx-auto"></div>
+                        <p class="mt-2 text-sm text-blue-300">Analizando con YOLOv8x...</p>
+                    </div>
+                </div>
+
+                <!-- RESULTADO PRINCIPAL -->
+                <div id="resultContainer" class="bg-gray-800 p-4 rounded-lg shadow-lg hidden">
+                    <h3 class="text-lg font-semibold mb-2">Imagen Procesada:</h3>
+                    <div id="mediaOutput" class="rounded overflow-hidden border border-gray-600">
+                        <!-- Aquí se inyecta la img resultante -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: RECORTES -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg h-[800px] overflow-y-auto">
+                <h2 class="text-xl font-semibold mb-4 text-purple-400">Detecciones</h2>
+                <p class="text-xs text-gray-400 mb-2">Haz click en una imagen para ampliar.</p>
+                <div id="cropsContainer" class="space-y-4">
+                    <p class="text-gray-500 text-center mt-10">Sube una imagen para comenzar.</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MODAL (Lightbox) -->
+    <div id="imageModal" class="fixed inset-0 bg-black bg-opacity-95 hidden z-50 flex items-center justify-center p-4" onclick="closeModal()">
+        <div class="relative max-w-6xl max-h-screen w-full flex flex-col items-center" onclick="event.stopPropagation()">
+            <button onclick="closeModal()" class="absolute top-0 right-0 m-4 text-white text-5xl hover:text-red-500 transition">&times;</button>
+            
+            <img id="modalImage" src="" class="max-h-[80vh] w-auto object-contain rounded-lg border-2 border-gray-600 shadow-2xl bg-black">
+            
+            <div id="modalInfo" class="mt-6 text-center bg-gray-900 px-8 py-4 rounded-xl border border-gray-700 shadow-xl">
+                <h3 id="modalLabel" class="text-4xl font-bold uppercase mb-2"></h3>
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+                    <div id="modalConfBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p id="modalConf" class="text-gray-300 text-xl font-mono"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- MODAL LOGIC ---
+        function openModal(imageB64, label, confidence) {
+            const modal = document.getElementById('imageModal');
+            const img = document.getElementById('modalImage');
+            const labelEl = document.getElementById('modalLabel');
+            const confEl = document.getElementById('modalConf');
+            const confBar = document.getElementById('modalConfBar');
+            
+            img.src = `data:image/jpeg;base64,${imageB64}`;
+            
+            const cleanLabel = label.replace('_', ' ');
+            labelEl.textContent = cleanLabel;
+            
+            const confPercent = (confidence * 100).toFixed(1);
+            confEl.textContent = `Confianza: ${confPercent}%`;
+            confBar.style.width = `${confPercent}%`;
+            
+            if (label === 'con_casco') {
+                labelEl.className = "text-4xl font-bold text-green-400 uppercase mb-2";
+                confBar.className = "bg-green-500 h-2.5 rounded-full";
+            } else {
+                labelEl.className = "text-4xl font-bold text-red-500 uppercase mb-2";
+                confBar.className = "bg-red-500 h-2.5 rounded-full";
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('imageModal').classList.add('hidden');
+        }
+
+        // --- MAIN APP LOGIC ---
+        async function uploadModel() {
+            const fileInput = document.getElementById('modelInput');
+            const status = document.getElementById('modelStatus');
+            
+            if (!fileInput.files[0]) return alert("Selecciona un archivo .pt primero");
+
+            const formData = new FormData();
+            formData.append('model', fileInput.files[0]);
+
+            status.textContent = "Subiendo modelo...";
+            try {
+                const res = await fetch('/upload_model', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok) {
+                    status.textContent = "✅ " + data.message;
+                    status.classList.replace('text-gray-500', 'text-green-400');
+                } else {
+                    status.textContent = "❌ " + data.error;
+                    status.classList.replace('text-gray-500', 'text-red-400');
+                }
+            } catch (e) {
+                status.textContent = "Error de conexión";
+            }
+        }
+
+        function previewMedia() {
+            const file = document.getElementById('mediaInput').files[0];
+            if(file) {
+                document.getElementById('processBtn').classList.remove('hidden');
+                document.getElementById('resultContainer').classList.add('hidden');
+                document.getElementById('cropsContainer').innerHTML = '<p class="text-gray-500 text-center mt-10">Listo para analizar...</p>';
+            }
+        }
+
+        async function processMedia() {
+            const fileInput = document.getElementById('mediaInput');
+            const loader = document.getElementById('loader');
+            const processBtn = document.getElementById('processBtn');
+            const resultContainer = document.getElementById('resultContainer');
+            const mediaOutput = document.getElementById('mediaOutput');
+            const cropsContainer = document.getElementById('cropsContainer');
+
+            if (!fileInput.files[0]) return alert("Selecciona una imagen");
+
+            const formData = new FormData();
+            formData.append('media', fileInput.files[0]);
+
+            loader.classList.remove('hidden');
+            processBtn.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+            cropsContainer.innerHTML = '';
+
+            try {
+                const res = await fetch('/process', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error || "Error desconocido");
+
+                // Mostrar Imagen Resultado
+                resultContainer.classList.remove('hidden');
+                mediaOutput.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = data.output_url;
+                img.className = "w-full rounded shadow";
+                mediaOutput.appendChild(img);
+
+                // Mostrar Recortes
+                if (data.detections.length === 0) {
+                    cropsContainer.innerHTML = '<p class="text-yellow-500 text-center">No se detectaron motos con ocupantes.</p>';
+                } else {
+                    data.detections.forEach(det => {
+                        const colorClass = det.label === 'con_casco' ? 'border-green-500 text-green-400' : 'border-red-500 text-red-400';
+                        const item = document.createElement('div');
+                        
+                        item.className = `bg-gray-700 p-3 rounded border-l-4 flex gap-4 items-center ${colorClass} cursor-pointer hover:bg-gray-600 transition transform hover:scale-105`;
+                        item.onclick = () => openModal(det.image, det.label, det.confidence);
+                        
+                        item.innerHTML = `
+                            <div class="relative group min-w-[5rem]">
+                                <img src="data:image/jpeg;base64,${det.image}" class="w-20 h-20 object-cover rounded bg-black">
+                                <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center transition">
+                                    <i class="fa-solid fa-eye text-white opacity-0 group-hover:opacity-100"></i>
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <p class="font-bold uppercase text-sm mb-1">${det.label.replace('_', ' ')}</p>
+                                <div class="w-full bg-gray-800 rounded-full h-1.5 mb-1">
+                                    <div class="${det.label === 'con_casco' ? 'bg-green-500' : 'bg-red-500'} h-1.5 rounded-full" style="width: ${det.confidence * 100}%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 text-right">${(det.confidence * 100).toFixed(0)}%</p>
+                            </div>
+                        `;
+                        cropsContainer.appendChild(item);
+                    });
+                }
+
+            } catch (e) {
+                alert("Error: " + e.message);
+            } finally {
+                loader.classList.add('hidden');
+                processBtn.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+              precision    recall  f1-score   support
+
+ 0_sin_casco       0.97      0.96      0.96       744
+ 1_con_casco       0.96      0.97      0.96       759
+
+    accuracy                           0.96      1503
+   macro avg       0.96      0.96      0.96      1503
+weighted avg       0.96      0.96      0.96      1503
