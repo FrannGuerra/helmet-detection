@@ -35,6 +35,10 @@ helmet-detection/
 - pip (gestor de paquetes de Python)
 - GPU NVIDIA (recomendado para YOLO, opcional)
 
+### Archivos a descargar:
+- Modelo YOLO de clasificación entrenado si no se desea entrenar
+- Imágenes de dataset y de prueba de aplicación
+
 ## 📦 Instalación de Dependencias
 
 #### **Para `crear_modelo_yolo.py`**
